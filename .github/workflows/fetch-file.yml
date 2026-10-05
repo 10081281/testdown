@@ -1,0 +1,61 @@
+name: 自动下载外部网站文件并取回
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: 要下载的外部文件完整直链
+        required: true
+        default: "https://example.com/your-target-file.zip"
+
+jobs:
+  download-and-save:
+    runs-on: ubuntu-latest
+    steps:
+      # 如果后续需要提交文件回仓库再打开下面checkout；单纯下载取回就注释或删掉
+      # - name: 拉取仓库代码
+      #   uses: actions/checkout@v4
+
+      - name: 创建专属下载存储目录
+        run: mkdir -p ./external-downloads
+
+      - name: 解析URL获取原始文件名 & 下载
+        run: |
+          set -eo pipefail
+          URL="${{ github.event.inputs.file_url }}"
+          # 从url截取文件名
+          FILENAME=$(basename "${URL}")
+          SAVE_PATH="./external-downloads/${FILENAME}"
+
+          echo "目标URL: ${URL}"
+          echo "保存文件名: ${FILENAME}"
+
+          # --connect‑timeout 15：15s完成TCP握手；
+          # --speed‑limit 10240 --speed‑time 60：连续60s速度低于10KB/s判定僵死中断；
+          # 不再使用 --max‑time，大文件可以慢慢下载
+          curl -L \
+            --connect-timeout 15 \
+            --speed-limit 10240 \
+            --speed-time 60 \
+            -o "${SAVE_PATH}" "${URL}"
+
+          ls -lh ./external-downloads/
+
+          # 简单校验：小于2KB视为异常（网页错误页）
+          FILESIZE=$(stat -c%s "${SAVE_PATH}")
+          echo "文件字节大小: ${FILESIZE}"
+          if [[ "${FILESIZE}" -lt 2048 ]]; then
+            echo "::error::下载得到的文件过小，很可能返回了错误网页！"
+            exit 1
+          fi
+
+          # 输出sha256哈希，用于校验完整性
+          echo "=== SHA256SUM ==="
+          sha256sum "${SAVE_PATH}"
+
+      - name: 上传下载后的文件为可下载工件
+        uses: actions/upload-artifact@v4
+        with:
+          name: "外部下载-${{ github.run_number }}-${{ github.event.inputs.file_url | url_encode }}"
+          path: ./external-downloads/
+          retention-days: 30
+          if-no-files-found: error
