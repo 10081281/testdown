@@ -55,7 +55,8 @@ jobs:
       - name: 上传下载后的文件为可下载工件
         uses: actions/upload-artifact@v4
         with:
-          name: "外部下载-${{ github.run_number }}-${{ github.event.inputs.file_url | url_encode }}"
+          name: "外部下载-${{ github.run_number }}"
           path: ./external-downloads/
           retention-days: 30
           if-no-files-found: error
+
